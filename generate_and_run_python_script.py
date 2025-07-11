@@ -16,9 +16,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")  # OpenAI APIキーの取得
 MODEL = os.getenv("OPENAI_MODEL", "o4-mini")  # Model select
+PRE_PROMPT = os.getenv("PRE_PROMPT", "pre_prompt.txt")  # Pre Prompt
 
-# 事前promptをprompt.txtから読み込む
-with open("prompt.txt", "r") as f:
+# pre_promptをpre_prompt.txtから読み込む
+with open(PRE_PROMPT, "r") as f:
     pre_prompt = f.read()
 
 # ChatGPT APIでpromptを入力して返信を受け取る
@@ -27,7 +28,9 @@ def get_chat_response(prompt):
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.choices[0].message.content.strip()
+    usage = response.usage
+    content = response.choices[0].message.content.strip()
+    return content, usage
 
 #返信の内容を.pyファイルに書いて保存する
 def generate_python_script(res):
@@ -45,7 +48,8 @@ def run_python_script():
     #print("Return code:", result.returncode)
 
 def main(prompt):
-    res = get_chat_response(prompt)
+    res, usage = get_chat_response(prompt)
+    print(f"Token usage - prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens}, total: {usage.total_tokens}")
     print("Generated code:")
     print(res)
     generate_python_script(res)

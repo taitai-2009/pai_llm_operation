@@ -56,6 +56,7 @@ if st.button("🔄 コード生成"):
             st.error(f"コード生成に失敗しました: {e}")
     if st.session_state['generated_code'] and mode == "Beginner":
         st.info("Gazebo 上で動作を確認してください。")
+        generate_python_script(st.session_state['generated_code'])
         def target_beginner():
             try:
                 run_python_script()

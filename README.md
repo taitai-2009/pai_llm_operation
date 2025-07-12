@@ -69,10 +69,9 @@
 
   #### 稼働状況の確認
   ```bash
-  % docker ps
+  docker ps
   CONTAINER ID   IMAGE                                           COMMAND                   CREATED       STATUS       PORTS                                                                                                                    NAMES
-  f6719b01d06e   airobotbook/ros2-desktop-ai-robot-book-humble   "/bin/bash -c /entry…"   3 weeks ago   Up 2 hours   0.0.0.0:9090->9090/tcp, 0.0.0.0:9876->9876/tcp, 0.0.0.0:6080->80/tcp, 0.0.0.0:13389->3389/tcp, 0.0.0.0:15900->5900/tcp   pai_ros2
-  % 
+  f6719b01d06e   airobotbook/ros2-desktop-ai-robot-book-humble   "/bin/bash -c /entry…"   3 weeks ago   Up 2 hours   0.0.0.0:9090->9090/tcp, 0.0.0.0:9876->9876/tcp, 0.0.0.0:6080->80/tcp, 0.0.0.0:13389->3389/tcp, 0.0.0.0:15900->5900/tcp   pai_ros2 
   ```
 
   #### ROS2 で動くロボットの Gazebo 環境をインストール
@@ -90,12 +89,12 @@
 
   #### 開発環境の停止 (docker imageを消さない限り作業結果は保存される)
   ```bash
-  % docker stop pai_ros2
+  docker stop pai_ros2
   ```
   
   #### 開発環境の再開
   ```bash
-  % docker stop pai_ros2
+  docker stop pai_ros2
   ```
 
 

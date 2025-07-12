@@ -20,6 +20,14 @@ if 'run_thread' not in st.session_state:
 st.set_page_config(page_title="LLM→ROS2 Code Generator", layout="wide")
 st.title("🤖 LLM → ROS2 Code Generator")
 
+# モード選択
+mode = st.radio(
+    "モードを選択",
+    ("Beginner", "Expert"),
+    index=0,
+    help="Beginner: 自動で実行まで行います。Expert: 生成後に編集してから実行します。"
+)
+
 # プロンプトの前置き読み込み
 prompt_file = os.getenv("PRE_PROMPT", PRE_PROMPT)
 try:
@@ -36,7 +44,7 @@ user_input = st.text_area(
     height=200,
 )
 
-# 「コード生成」ボタン
+ # 「コード生成」ボタン
 if st.button("🔄 コード生成"):
     full_prompt = pre_prompt + user_input
     with st.spinner("生成中…"):
@@ -46,32 +54,59 @@ if st.button("🔄 コード生成"):
             st.session_state['token_usage'] = usage
         except Exception as e:
             st.error(f"コード生成に失敗しました: {e}")
-        else:
-            # 生成コードをファイルに保存
-            generate_python_script(code)
-
-if st.session_state['generated_code']:
-    st.subheader("▶︎ 生成された Python コード")
-    st.code(st.session_state['generated_code'], language='python')
-    usage = st.session_state['token_usage']
-    if usage:
-        st.markdown(f"**Token Usage:** Prompt: {usage.prompt_tokens}, Completion: {usage.completion_tokens}, Total: {usage.total_tokens}")
-    
-    # 実行ボタンでバックグラウンド実行
-    if st.button("▶ 実行する"):
+    if st.session_state['generated_code'] and mode == "Beginner":
         st.info("Gazebo 上で動作を確認してください。")
-        def target():
+        def target_beginner():
             try:
                 run_python_script()
             except Exception as e:
                 st.error(f"コード実行中にエラーが発生しました: {e}")
             else:
                 st.success("コードの実行が完了しました！")
-        th = threading.Thread(target=target, daemon=True)
+        th = threading.Thread(target=target_beginner, daemon=True)
         th.start()
         st.session_state['run_thread'] = th
 
-    # スレッド実行中はスピナーを回す
+if st.session_state['generated_code']:
+    st.subheader("▶︎ 生成された Python コード")
+    if mode == "Expert":
+        # 編集可能なテキストエリア
+        edited_code = st.text_area(
+            "編集可能な生成コード:",
+            st.session_state['generated_code'],
+            height=500
+        )
+        code_to_exec = edited_code
+    else:
+        # Beginner モードは読み取り専用
+        code_to_exec = st.session_state['generated_code']
+        st.code(code_to_exec, language='python')
+
+    # トークン使用量表示
+    usage = st.session_state['token_usage']
+    if usage:
+        st.markdown(
+            f"**Token Usage:** Prompt: {usage.prompt_tokens}, Completion: {usage.completion_tokens}, Total: {usage.total_tokens}"
+        )
+
+    # Expert モードのみ、実行ボタンを表示
+    if mode == "Expert":
+        if st.button("▶ 実行する"):
+            st.info("Gazebo 上で動作を確認してください。")
+            def target_expert():
+                try:
+                    # 編集後のコードを保存して実行
+                    generate_python_script(code_to_exec)
+                    run_python_script()
+                except Exception as e:
+                    st.error(f"コード実行中にエラーが発生しました: {e}")
+                else:
+                    st.success("コードの実行が完了しました！")
+            th = threading.Thread(target=target_expert, daemon=True)
+            th.start()
+            st.session_state['run_thread'] = th
+
+    # 実行中はスピナーを回す
     if st.session_state['run_thread'] and st.session_state['run_thread'].is_alive():
         with st.spinner("コード実行中…"):
             pass

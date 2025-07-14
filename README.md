@@ -1,4 +1,4 @@
-# LLM による自然言語をもとにしたロボット操作
+# 自然言語を用いた LLM によるロボット操作
 
 `Code Name: pai_llm_operation`
 
@@ -50,7 +50,7 @@
 ## 3. 開発環境
 
 * MacBookAir (Apple M3) macOS: Sequoia 15.5
-* 講義で用いた 「第2版 ROS2とPythonで作って学ぶAIロボット入門」の docker イメージ (`airobotbook/ros2-desktop-ai-robot-book-humble`) による演習環境を、をブラウザから利用
+* 講義で用いた「第2版 ROS2とPythonで作って学ぶAIロボット入門」の docker イメージ (`airobotbook/ros2-desktop-ai-robot-book-humble`) による演習環境を、をブラウザから利用
 
   #### Docker 起動スクリプト (http://localhost:6080 でアクセス可能)
   ```bash
@@ -81,7 +81,7 @@
   sudo apt install ros-humble-turtlebot3-simulations
   ```
 
-  ### Python モジュールのインストール
+  #### Python モジュールのインストール
   ```
   pip install -r requirement.txt
   ```
@@ -137,7 +137,7 @@
 | 5. セキュリティ・コンプライアンス | SOC2/ISO27001取得済み。データ取り扱いポリシーが明確で、エンタープライズ利用に安心。[^7]                 | ◯   | Google Cloudのセキュリティ基盤を活用可能。VaultやIAMとの統合をサポート。           | ◯   | 社会的安全性重視。データは自社インフラ内で処理。                         | ◯   |
 | 6. コスト透明性                | 従量課金モデルで初期投資不要。ダッシュボードで利用状況・コストを可視化可能。[^8]                        | ◯   | Cloud料金体系に準拠。複数サービスの組み合わせ料金を管理する必要がある。            | ◯   | 定額プラン中心。従量課金対応予定。可視化機能は限定的。                                    | △   |
 | 7. コスト[^9]                   | gpt-3.5-turbo: $0.5/1M tokens, o4-mini: $1.1/1M input tokens                                   | ◯   | Gemini Pro: $1.25/1M input tokens                                             | △   | Claude Sonnet 4: $3.0/1M input tokens                                           | ×   |
-| 8. 今回のタスクとの親和性        | コミュニティガイドライン違反判定・ポジティブフィードバック判定など、当プロジェクト固有タスクへの適合度が高い。[^10]     | ◯   | 実装自由度はあるが、初期プロンプト調整が必要。                                  | ◯   | 安全性重視のため調整は簡単だが、タスク特化チューニングは限定的。                        | △   |
+| **8. 今回のタスクとの親和性**   | ROS2用rclpyノード生成において高い適合性。コード構造やAPI利用の指示に正確に対応。 | ◎ | 会話品質は高いが、ROS2コード生成、Gazebo プラグインの利用指示など複雑な API 呼び出し部分で誤ったコードが出力されるケースあり。 | △ | 安全性重視だが、複雑なコード生成には表現力不足。基本的なスクリプト生成には利用可能。 | △ |
 | **総合評価**                   | **高い生成品質と安定性を備えたバランスの良い選択**                                          | **◎**    | 強力なインフラ連携と会話品質が魅力的                                            | △    | 安全性重視だが拡張性とコスト面で課題あり                                       | △    |
 
 [^1]: https://cloud.google.com/vertex-ai/docs/generative-models/overview
@@ -149,21 +149,23 @@
 [^7]: https://openai.com/policies/security
 [^8]: https://openai.com/pricing
 [^9]: https://qiita.com/SH2/items/39314152c0a6f9a7b681
-[^10]: https://platform.openai.com/docs/guides/prompts
 
 
 ### 4-4. LLM利用時のプロンプト設計
 
-1. 事前プロンプトとユーザーからのロボット動作についての指示に基づくコード生成を依頼
+1. 事前プロンプトとユーザーからのロボット動作の指示に基づくコード生成を依頼
     - システムプロンプト： なし
     - ユーザープロンプト：
+      - `import rclpy`で始まる Python コードのみを確実に生成させるため、以下の事前プロンプトを設定。
       - 事前プロンプト ([参考サイト](https://qiita.com/porizou1/items/a085d20e936946330540)のものを利用)
-        - I need rclpy code to run a differential two-wheeled robot.
-        - Publish /cmd_vel every 0.1 seconds.
-        - Please only write Python code in your replies.
-        - Reply by. import rclpy Please start with
-        - QoS is not set
-      - `ユーザーからの具体的な指示 (日本語も可)`
+        ```bash
+        I need rclpy code to run a differential two-wheeled robot.
+        Publish /cmd_vel every 0.1 seconds.
+        Please only write Python code in your replies.
+        Reply by. import rclpy Please start with
+        QoS is not set
+        ```
+      - ユーザーからの具体的な指示 (日本語も可)、例:「0.2m/sで前に進む。3m進んだら60度右に旋回。これを繰り返して。」
 
 
 ### 4-5. 生成されたコードの編集と実行
@@ -171,20 +173,147 @@
 * ユーザープロンプトにより生成されたコードについては、即実行 (Beginnerモード)と、編集してから実行 (Expertモード) を2つを設ける。
 
 
-## 5. 設計・開発・工夫した点
+## 5. 開発・工夫した点
 
-### 5-1. CLI モード
+### 5-1. Gazebo 環境構築・ロボット操作準備
 
-  以下実行時に、
+* Gazebo 上の以下2種類の world を構築・準備した。
+
+#### 5-1-1. Case #1 Gazebo Empty World
+
+* Gazebo 上で、まっさらな平面にロボットを配置する。
+ 
+  Turtlebot3 付属の`empty_world.launch.py`ではカメラの位置が真上のため、複製してから修正する。
+  ```
+  cd ~/airobot_ws/src/turtlebot3_happy_mini/turtlebot3_simulations/turtlebot3_gazebo/launch
+  cp empty_world.launch.py ~/airobot_ws/install/turtlebot3_gazebo/share/turtlebot3_gazebo/launch/empty2_world.launch.py
+  ```
+  カメラ位置を調整するため、Gazebo 付属の`world`を利用するよう変更
+  ```
+  #world = os.path.join(
+  #    get_package_share_directory('turtlebot3_gazebo'),
+  #    'worlds',
+  #    'empty_world.world'
+  #)
+  world = '/usr/share/gazebo-11/worlds/empty.world'
+  ```
+  #### 以下実行して Gazebo 上にロボットを配置
+  ```
+  ros2 launch turtlebot3_gazebo empty2_world.launch.py 
+  ```
+  #### Topic の Publish を確認 (別ターミナル)
+  ```
+  ros2 topic echo /cmd_vel
+  ```
+
+#### 5-1-2. Case #2 Gazebo Big Wheel
+
+* Gazebo 上で、Big Wheel 上にロボットを配置する。
+
+  #### デフォルトパッケージを利用して Gazebo 上の Big Wheel ロボットを配置
+  ```
+  ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
+  ```
+  #### Topic の Publish を確認 (別ターミナル)
+  ```
+  ros2 topic echo /cmd_vel
+  ```
+
+### 5-2. CLI モード
+
+  * CLI での操作は、以下を実行する。
   ```bash
   pyhton3 generate_and_run_python_script.py
   ```
 
-  `Please enter additional prompt text:` とロボットへの指示を入力するモードとなる。(入力例：0.2m/sで前に進む)
+  * `Please enter additional prompt text:` とロボットへの指示を入力するモードとなる。(入力例：0.2m/sで前に進む。3m進んだら60度右に旋回。これを繰り返して)
   
   * 出力されたコードは即実行される。
+  * `ros2 topic echo /cmd_vel` を実行しているターミナルに、0.2m/s で前に動く等のトピックが Publish される。
+  * 以下は、出力の様子。ユーザー指示プロンプトを入力後、LLM　API 利用し、指示に基づいたコードが生成され、Gazobo 上のロボットを操作。
+    ```
+    ubuntu@f6719b01d06e:~/pai_llm_operation$ python3 generate_and_run_python_script.py 
+    Please enter additional prompt text:
+    0.2m/sで前に進む。3m進んだら60度右に旋回。これを繰り返して。
 
-### 5-2. GUI モード (Streamlit 利用)
+    2025-07-13 18:43:31 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+    Token usage - prompt: 91, completion: 1366, total: 1457  ← 消費トークン数
+    Generated code:  ← 以降は、生成されたコード
+    import rclpy
+    from rclpy.node import Node
+    from geometry_msgs.msg import Twist
+    import math
+
+    class DiffDriveController(Node):
+        def __init__(self):
+            super().__init__('diff_drive_controller')
+            self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+            self.timer = self.create_timer(0.1, self.timer_callback)
+
+            # motion parameters
+            self.linear_speed = 0.2               # m/s
+            self.distance = 3.0                   # m
+            self.forward_duration = self.distance / self.linear_speed
+
+            self.turn_angle = math.radians(60)    # radians
+            self.angular_speed = 0.5              # rad/s
+            self.turn_duration = self.turn_angle / self.angular_speed
+
+            # state machine
+            self.state = 'forward'
+            self.state_start = self.get_clock().now()
+
+        def timer_callback(self):
+            now = self.get_clock().now()
+            elapsed = (now - self.state_start).nanoseconds * 1e-9
+
+            twist = Twist()
+
+            if self.state == 'forward':
+                if elapsed < self.forward_duration:
+                    twist.linear.x = self.linear_speed
+                    twist.angular.z = 0.0
+                else:
+                    # switch to turn
+                    self.state = 'turn'
+                    self.state_start = now
+                    twist.linear.x = 0.0
+                    twist.angular.z = -self.angular_speed
+            elif self.state == 'turn':
+                if elapsed < self.turn_duration:
+                    twist.linear.x = 0.0
+                    twist.angular.z = -self.angular_speed
+                else:
+                    # switch back to forward
+                    self.state = 'forward'
+                    self.state_start = now
+                    twist.linear.x = self.linear_speed
+                    twist.angular.z = 0.0
+
+            self.cmd_pub.publish(twist)
+
+    def main(args=None):
+        rclpy.init(args=args)
+        node = DiffDriveController()
+        try:
+            rclpy.spin(node)
+        except KeyboardInterrupt:
+            pass
+        node.destroy_node()
+        rclpy.shutdown()
+
+    if __name__ == '__main__':
+        main()
+    
+    ```
+
+### 5-3. GUI モード (Streamlit 利用)
+
+* ブラウザベースの GUI モードは、以下を実行する。ラジオボタンで、Beginner と Expert 2つのモードが選択可能。
+  ```
+  streamlit run app.py
+  ```
+
   1. Beginner モード
 
       * ロボット操作指示のユーザープロンプトを入力し、コード生成した後、生成されたコードを自動実行する
@@ -211,66 +340,17 @@
               ![UI_6](images/UI_6.png)
 
 
-### 5-3. 環境変数
+### 5-4. 環境変数
 * LLM API モデル, API Token, 事前プロンプトをハードコードせず、容易に変更できるよう等、環境変数とした。
 
 
-### 5-4. LLM API 利用時の Token 数の表示
+### 5-5. LLM API 利用時の Token 数の表示
 * LLM 利用時のToken 数を表示することにより、API 利用料の試算を可能とした。
 
 
-### 5-5. Streamlit を用いた、Webブラウザ UI の実装
+### 5-6. Streamlit を用いた、Webブラウザ UI の実装
 * Streamlit を利用し、UI をブラウザ (GUI) を利用することにより、ロボットへの指示を容易にした。
 * Expert モードを実装し、LLM により生成されるコードの編集・実行を可能とした。
-
-
-### 5-6. Case #1 Gazebo Empty World
-* Gazebo 上で、まっさらな平面にロボットを配置する。
-
-  ```
-  /home/ubuntu/airobot_ws/install/turtlebot3_gazebo/share/turtlebot3_gazebo/launch/empty_world.launch.py をコピーして、
-  /home/ubuntu/airobot_ws/install/turtlebot3_gazebo/share/turtlebot3_gazebo/launch/empty2_world.launch.py を作成、
-  カメラ位置を調整するため、world = '/usr/share/gazebo-11/worlds/empty.world' とした
-  ```
-  #### 以下実行して Gazebo 上にロボットを配置
-  ```
-  ros2 launch turtlebot3_gazebo empty2_world.launch.py 
-  ```
-  #### Topic の Publish を確認 (別ターミナル)
-  ```
-  ros2 topic echo /cmd_vel
-  ```
-  #### 以下実行して、コード生成とロボット操作を実行 (別ターミナル)
-    (CLI モード)
-    ```
-    python3 generate_and_run_python_script.py
-    ```
-    (GUI (ブラウザ) モード)
-    ```
-    streamlit run app.py
-    ```
-
-
-### 5-7. Case #2 Gazebo Big Wheel
-* Gazebo 上で、Big Wheel 上にロボットを配置する。
-
-  #### デフォルトパッケージを利用して Gazebo 上の Big Wheel ロボットを配置
-  ```
-  ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
-  ```
-  #### Topic の Publish を確認 (別ターミナル)
-  ```
-  ros2 topic echo /cmd_vel
-  ```
-  #### 以下実行して、コード生成とロボット操作を実行 (別ターミナル)
-    (CLI モード)
-    ```
-    python3 generate_and_run_python_script.py
-    ```
-    (GUI (ブラウザ) モード)
-    ```
-    streamlit run app.py
-    ```
 
 
 ## 6. 考察・評価
@@ -279,7 +359,7 @@ LLM によるコード生成によるロボット操作について、以下の�
 
 ### 6-1. 前提
 
-* LLM が生成するコードにはエラーが発生するものはなく、一定のコードの品質は確保されているものと思料。
+* LLM (o4-mini) が生成するコードにはエラーが発生するものはなく、一定のコードの品質は確保されているものと思料。
 
 ### 6-2. Gazebo Empty World
 
@@ -310,10 +390,10 @@ LLM によるコード生成によるロボット操作について、以下の�
 * 一方で、World が複雑になるなるほど、想定外の動き (ロボットの横転等) があり、改善の余地があることを確認。複雑な指示をプロンプトに加えても、大きな改善はいられなかった。
 
 
-## 7. 課題・今後の展開
+## 7. 今後の展開
 
-* プロンプトと生成されるコードの関係性の確認
 * Gazebo 等シミュレーション環境と、ロボット実機の同期の実現
+* プロンプトと生成されるコードの関係性の解析
 * ロボットの走行をシミュレーションさせるための障害物などの柔軟なレイアウト設定 (world 設定の習得)
 * LLM が生成するコードの性能評価手法の確立
 * 障害物等、複雑な環境下での、柔軟なロボット走行の実施のためのプロンプト作成

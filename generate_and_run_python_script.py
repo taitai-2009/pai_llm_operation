@@ -22,7 +22,7 @@ PRE_PROMPT = os.getenv("PRE_PROMPT", "pre_prompt.txt")  # Pre Prompt
 with open(PRE_PROMPT, "r") as f:
     pre_prompt = f.read()
 
-# ChatGPT APIでpromptを入力して返信を受け取る
+# LLMにpromptを入力して返信を受け取る
 def get_chat_response(prompt):
     response = openai.chat.completions.create(
         model=MODEL,

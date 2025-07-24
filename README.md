@@ -39,8 +39,14 @@
 * 表現力：動画の構成や説明のわかりやすさ。
     #### 他人の作品の剽窃、最終課題サンプルの丸写し、明らかに関係のないファイルの提出など、悪質な行為は講義の終了判定対象外となる可能性あり。
 
+## 2. プロジェクトの目的
+* 最終課題を取り組むにあたり紹介のあった以下の[事例](https://qiita.com/porizou1/items/a085d20e936946330540)をもとに、
+* 人間の自然言語での指示をもとに、LLM が生成する Python コードでロボットを操作するシステムの構築。
+* ROS2 と Gazebo 環境を用いたロボット操作の自動化と、ユーザーフレンドリーなインターフェースの実現。
+* 上記に加え、ロボット実機を用いた操作にも挑戦する。(Ch.7)
 
-## 2. 参考にした最終課題サンプル
+
+### 参考にした最終課題サンプル
 
 |タイトル                                               |URL                                                |難易度|
 |-----------------------------------------------------|----------------------------------------------------|:---:|
@@ -353,9 +359,9 @@
 * Expert モードを実装し、LLM により生成されるコードの編集・実行を可能とした。
 
 
-## 6. 考察・評価
+## 6. 開発環境における考察・評価
 
-LLM によるコード生成によるロボット操作について、以下の通り考察・評価を行った。
+開発環境における LLM によるコード生成によるロボット操作について、以下の通り考察・評価を行った。
 
 ### 6-1. 前提
 
@@ -504,14 +510,262 @@ LLM によるコード生成によるロボット操作について、以下の�
         ```
 
 
-### 6-4. LLM が生成するコードの性能評価
+### 6-4. 開発環境における LLM が生成するコードの性能評価
 
 * Gazebo で設定する World (障害物の数、配置) が単純なものでは、生成されるコードにより、指示通りロボットを操作できることを確認。
 * 一方で、World が複雑になるなるほど、想定外の動き (ロボットの横転等) があり、改善の余地があることを確認。
 * LiDARの利用や、障害物を旋回して回避することについての細かな指示を与えることにより、生成されるコードとロボットの動作に大きな改善がみられた。
 
 
-## 7. 今後の展開
+## 7. 実機環境
+
+### 7-1. MicroROS-Pi5 Robot Car
+
+* 実機環境には、コストを考慮し、車輪とLiDARが実装された開発環境に近い、ROS2-Humble を使った Yahboom 社の MicroROS-Pi5 Robot Car を用いた。
+* 実機環境は Raspberry Pi 5 (Raspberry Pi OS Bookworm) 上に Docker Container `yahboomtechnology/ros-humble:4.1.2` と `microros/micro-ros-agent` で構築されている。
+* コンテナ上の実機環境では、以下のトピックが利用可能であり、開発環境と同じく、LLMから、車輪の操作 `/cmd_vel` と LiDAR の利用`/scan`を利用する。
+    ```
+    root@roscarpi:~# ros2 topic list
+    /JoyState
+    /battery
+    /beep
+    /cmd_vel
+    /imu
+    /joy
+    /joy/set_feedback
+    /move_base/cancel
+    /odom_raw
+    /parameter_events
+    /rosout
+    /rpi5_ip
+    /scan
+    /servo_s1
+    /servo_s2
+    root@roscarpi:~# 
+    ```
+* Yahboom 社の MicroROS-Pi5 Robot Car の仕様は、[リンク](https://www.yahboom.net/study/MicroROS-Pi5)を参照。
+* 上記リンクに従い、WiFi Hot Spotモードに加え、通常のWiFiにも接続できるようにする。
+
+### 7-2. 実装
+
+* コンテナ上に開発環境と同じファイルを以下のように配備する。
+ ```bash
+  pai_llm_operation
+  ├── generate_and_run_python_script.py ← LLMへ指示と指示に基づくコードを生成 (参考サイトのコードをベースに修正) (*)
+  ├── generated_script.py            　 ← 上記で生成されたコード
+  ├── .env                              ← 環境設定ファイル (サンプルは、.env.example)
+  ├── pre_prompt.txt                    ← 生成させるコードの品質を維持するための固定(事前)プロンプト
+  ├── app.py                            ← 利用者からのプロンプト等を受け付ける Streamlit を利用した UI
+  ├── launch
+  └── requirements.txt                  ← Python依存パッケージ一覧
+
+   (*) 単体での実行も可能
+  ```
+* コンテナ上での環境構築
+
+  証明書の取得  
+  ```bash
+  sudo curl -sS https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+  ```
+
+  /etc/apt/sources.list.d/ros2-latest.list の編集  
+  ```bash
+  deb [arch=amd64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main
+  ```
+
+  Python 仮想環境構築  
+  ```bash
+  sudo apt update
+  sudo apt install python3.10-venv -y
+  python3 -m venv venv
+  source ./venv/bin/activate
+  ```
+
+  依存するパッケージのインストール  
+  ```bash
+  (venv) root@roscarpi:~/pai_llm_operation# cat requirements.txt 
+  openai
+  python-dotenv
+  streamline
+  (venv) root@roscarpi:~/pai_llm_operation# pip install -r requirements.txt
+  ```
+
+  アプリの起動  
+  ```bash
+  (venv) root@roscarpi:~/pai_llm_operation# streamlit run app.py
+
+      ð Welcome to Streamlit!
+
+      If you'd like to receive helpful onboarding emails, news, offers, promotions,
+      and the occasional swag, please enter your email address below. Otherwise,
+      leave this field blank.
+
+      Email:  
+
+  You can find our privacy policy at https://streamlit.io/privacy-policy
+
+  Summary:
+  - This open source library collects usage statistics.
+  - We cannot see and do not store information contained inside Streamlit apps,
+    such as text, charts, images, etc.
+  - Telemetry data is stored in servers in the United States.
+  - If you'd like to opt out, add the following to ~/.streamlit/config.toml,
+    creating that file if necessary:
+
+    [browser]
+    gatherUsageStats = false
+
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.xxx.xxx:8501
+  ```
+  
+  LAN 内からブラウザで http://192.168.xxx.xxx:8501 (または Raspberry Pi から http://localhost:8501)　にアクセスし、開発環境と同じインターフェースを得る。LLM への指示によるロボット操作コードの生成の準備ができた。
+
+
+## 8. 実機環境における考察・評価
+
+実機環境における LLM によるコード生成によるロボット操作について、以下の通り考察・評価を行った。
+
+### 8-1. 前提
+
+* LLM (o4-mini) が生成するコードにはエラーが発生するものはなく、一定のコードの品質は確保されているものと思料。
+
+### 8-2. 実機操作 (自宅廊下にカラーコーンによる障害物の設置)
+
+* 以下のプロンプトでロボットを操作 (Bigginer モード)
+    * 0.2m/sで前に進む。3m進んだら止まって。
+        * 出力されるコードに問題なく、プロンプト通り動作した。
+
+    * 前方に 0.3m/s で直進しながら、LiDAR（/scan トピック）で前方 15° 範囲の障害物を検知してください。  
+障害物が 0.3m 以内に入ったらいったん停止し、左右 90° それぞれの最小距離を比較して、よりスペースのある方向へアーク旋回（線速度 0.1m/s、角速度 ±0.5rad/s）してください。  
+前方がクリア（0.5m 以上）になったら、再び 0.3m/s で前進するように動作を繰り返す、10Hz のタイマーで /scan と /cmd_vel を回す rclpy のコードを書いてください。
+      * カラーコーンに近づいた際にこれらを検知し、速度を落として旋回 (アーク旋回) するが、カラーコーンは避けきれず、少しぶつかってしまうが、かろうじて避けている。壁に近づくと止まり、旋回して壁を回避している。しかし、壁で囲まれたところでスタックしてしまった。(提出した動画を参照)
+      * (参考) このとき生成されたコードは以下の通り
+        ```
+        import rclpy
+        from rclpy.node import Node
+        from sensor_msgs.msg import LaserScan
+        from geometry_msgs.msg import Twist
+        import math
+
+        class ObstacleAvoidanceNode(Node):
+            def __init__(self):
+                super().__init__('obstacle_avoidance')
+                # QoS is not set
+                # 前方に0.3m/sで直進しながら、LiDAR(/scan)で前方15°範囲の障害物を検知
+                self.scan_sub = self.create_subscription(
+                    LaserScan,
+                    '/scan',
+                    self.scan_callback,
+                    10
+                )
+                self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+                self.timer = self.create_timer(0.1, self.timer_callback)  # 10Hz
+                self.front_min = float('inf')
+                self.left_min = float('inf')
+                self.right_min = float('inf')
+                self.state = 'forward'
+                self.turn_dir = None
+
+            def scan_callback(self, msg: LaserScan):
+                # 初期化
+                self.front_min = float('inf')
+                self.left_min = float('inf')
+                self.right_min = float('inf')
+
+                # 各方向の閾値（ラジアン）
+                front_half = math.radians(7.5)
+                left_center = math.pi / 2
+                right_center = -math.pi / 2
+                side_half = math.radians(15)
+
+                angle = msg.angle_min
+                for r in msg.ranges:
+                    if not math.isfinite(r):
+                        angle += msg.angle_increment
+                        continue
+                    if r < msg.range_min or r > msg.range_max:
+                        angle += msg.angle_increment
+                        continue
+
+                    # 前方
+                    if abs(angle) <= front_half:
+                        if r < self.front_min:
+                            self.front_min = r
+                    # 左側
+                    if left_center - side_half <= angle <= left_center + side_half:
+                        if r < self.left_min:
+                            self.left_min = r
+                    # 右側
+                    if right_center - side_half <= angle <= right_center + side_half:
+                        if r < self.right_min:
+                            self.right_min = r
+
+                    angle += msg.angle_increment
+
+            def timer_callback(self):
+                cmd = Twist()
+
+                if self.state == 'forward':
+                    # 障害物検知
+                    if self.front_min < 0.3:
+                        # 停止してターンへ移行
+                        cmd.linear.x = 0.0
+                        cmd.angular.z = 0.0
+                        self.cmd_pub.publish(cmd)
+                        # 左右どちらにスペースがあるか比較
+                        if self.left_min > self.right_min:
+                            self.turn_dir = 'left'
+                        else:
+                            self.turn_dir = 'right'
+                        self.state = 'turn'
+                        return
+                    # 前進継続
+                    cmd.linear.x = 0.3
+                    cmd.angular.z = 0.0
+
+                elif self.state == 'turn':
+                    # 前方がクリアになったら前進へ
+                    if self.front_min > 0.5:
+                        self.state = 'forward'
+                        cmd.linear.x = 0.3
+                        cmd.angular.z = 0.0
+                    else:
+                        # アーク旋回
+                        cmd.linear.x = 0.1
+                        if self.turn_dir == 'left':
+                            cmd.angular.z = 0.5
+                        else:
+                            cmd.angular.z = -0.5
+
+                self.cmd_pub.publish(cmd)
+
+        def main(args=None):
+            rclpy.init(args=args)
+            node = ObstacleAvoidanceNode()
+            try:
+                rclpy.spin(node)
+            except KeyboardInterrupt:
+                pass
+            node.destroy_node()
+            rclpy.shutdown()
+
+        if __name__ == '__main__':
+            main()
+        ```
+
+### 8-3. 実機環境における LLM が生成するコードの性能評価
+
+* カラーコーンや壁のない場所では、生成されるコードにより、指示通りロボットを操作できることを確認。
+* カラーコーンは検知して旋回できるが、避けきれないケースが多く、LiDAR の仕様によるのか、早めの旋回を行わせるプロンプトが必要と思料。
+* 壁のような垂直な障害物に対しては、検知して旋回し、回避することができた。一方で、壁が直角に重なる角に侵入してしまうと避けきれないケースがあった。
+* 実機自体の大きさや、LiDAR の仕様に合わせたプロンプトが必要と認識。
+
+
+## 9. 今後の展開
 
 * Gazebo 等シミュレーション環境と、ロボット実機の同期の実現
 * プロンプトと生成されるコードの関係性の解析
@@ -520,4 +774,4 @@ LLM によるコード生成によるロボット操作について、以下の�
 * 障害物等、複雑な環境下での、柔軟なロボット走行の実施のためのプロンプト作成
 * OpenAI 以外の LLM API の利用による、生成されるコードの品質・性能比較
 
-## 8. 脚注
+## 10. 脚注

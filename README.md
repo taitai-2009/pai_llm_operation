@@ -390,124 +390,125 @@
         * ジグザグに進み、障害物をよけていくが、白い障害物の周りを回り続けるケースもあり。
 
     * ロボットを左に60度旋回させてから、前方に 0.3m/s で走らせながら、LiDAR（/scan トピック）で前方の障害物を検知してください。障害物が 0.5m以内に入ったらいったん停止し、左右どちらにより余裕があるかを比較してその方向へアーク旋回し、進行方向がクリアになったら再び前進するように動作させてください。10Hz のタイマーで /scan の受信と /cmd_vel への命令送信を両方行うコードを書いてください。
-        * 障害物や壁に近づいた際にこれらを検知し、速度を落として旋回 (アーク旋回) することで、ロボットが横転せず姿勢を維持しながら、障害物や壁を回避して進行を続けることができた。(このとき生成されたコードは以下の通り)
-        ```
-        import rclpy
-        from rclpy.node import Node
-        from sensor_msgs.msg import LaserScan
-        from geometry_msgs.msg import Twist
-        import math
-        import time
+        * 障害物や壁に近づいた際にこれらを検知し、速度を落として旋回 (アーク旋回) することで、ロボットが横転せず姿勢を維持しながら、障害物や壁を回避して進行を続けることができた。
+        * (参考) このとき生成されたコードは以下の通り。
+            ```
+            import rclpy
+            from rclpy.node import Node
+            from sensor_msgs.msg import LaserScan
+            from geometry_msgs.msg import Twist
+            import math
+            import time
 
-        class DifferentialDriveAvoider(Node):
-            def __init__(self):
-                super().__init__('differential_drive_avoider')
-                self.pub = self.create_publisher(Twist, '/cmd_vel', 10)
-                self.sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
-                self.timer = self.create_timer(0.1, self.timer_callback)
-                self.latest_scan = None
+            class DifferentialDriveAvoider(Node):
+                def __init__(self):
+                    super().__init__('differential_drive_avoider')
+                    self.pub = self.create_publisher(Twist, '/cmd_vel', 10)
+                    self.sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+                    self.timer = self.create_timer(0.1, self.timer_callback)
+                    self.latest_scan = None
 
-                # state machine: 'rotating_initial', 'moving_forward', 'turning'
-                self.state = 'rotating_initial'
-                self.start_time = None
+                    # state machine: 'rotating_initial', 'moving_forward', 'turning'
+                    self.state = 'rotating_initial'
+                    self.start_time = None
 
-                # initial rotation parameters: rotate left 60 deg at 0.5 rad/s
-                self.rotate_speed = 0.5
-                self.rotate_angle = math.radians(60.0)
-                self.rotate_duration = self.rotate_angle / self.rotate_speed
+                    # initial rotation parameters: rotate left 60 deg at 0.5 rad/s
+                    self.rotate_speed = 0.5
+                    self.rotate_angle = math.radians(60.0)
+                    self.rotate_duration = self.rotate_angle / self.rotate_speed
 
-                # forward speed
-                self.forward_speed = 0.3
+                    # forward speed
+                    self.forward_speed = 0.3
 
-                # avoidance arc turn parameters
-                self.arc_linear = 0.1
-                self.arc_angular = 0.5
-                self.turn_direction = 1  # +1 left, -1 right
+                    # avoidance arc turn parameters
+                    self.arc_linear = 0.1
+                    self.arc_angular = 0.5
+                    self.turn_direction = 1  # +1 left, -1 right
 
-            def scan_callback(self, msg):
-                self.latest_scan = msg
+                def scan_callback(self, msg):
+                    self.latest_scan = msg
 
-            def timer_callback(self):
-                if self.state == 'rotating_initial':
-                    now = time.time()
-                    if self.start_time is None:
-                        self.start_time = now
-                    elapsed = now - self.start_time
-                    twist = Twist()
-                    if elapsed < self.rotate_duration:
-                        twist.angular.z = self.rotate_speed
-                    else:
-                        self.state = 'moving_forward'
-                        twist.angular.z = 0.0
-                    self.pub.publish(twist)
-
-                elif self.state == 'moving_forward':
-                    twist = Twist()
-                    if self.latest_scan is None:
-                        # no data yet, just stop
-                        twist.linear.x = 0.0
-                        self.pub.publish(twist)
-                        return
-                    min_front = self.get_min_in_sector(self.latest_scan, -15.0, 15.0)
-                    if min_front < 0.5:
-                        # obstacle detected: stop and decide turn
-                        twist.linear.x = 0.0
-                        self.pub.publish(twist)
-                        left_clear = self.get_min_in_sector(self.latest_scan, 30.0, 90.0)
-                        right_clear = self.get_min_in_sector(self.latest_scan, -90.0, -30.0)
-                        self.turn_direction = 1 if left_clear > right_clear else -1
-                        self.state = 'turning'
-                    else:
-                        # path clear: go forward
-                        twist.linear.x = self.forward_speed
+                def timer_callback(self):
+                    if self.state == 'rotating_initial':
+                        now = time.time()
+                        if self.start_time is None:
+                            self.start_time = now
+                        elapsed = now - self.start_time
+                        twist = Twist()
+                        if elapsed < self.rotate_duration:
+                            twist.angular.z = self.rotate_speed
+                        else:
+                            self.state = 'moving_forward'
+                            twist.angular.z = 0.0
                         self.pub.publish(twist)
 
-                elif self.state == 'turning':
-                    twist = Twist()
-                    if self.latest_scan is None:
-                        twist.linear.x = 0.0
-                        twist.angular.z = 0.0
-                        self.pub.publish(twist)
-                        return
-                    min_front = self.get_min_in_sector(self.latest_scan, -15.0, 15.0)
-                    if min_front > 0.5:
-                        # path cleared: stop turning, resume forward
-                        self.state = 'moving_forward'
-                        twist.linear.x = 0.0
-                        twist.angular.z = 0.0
-                        self.pub.publish(twist)
-                    else:
-                        # arc turn toward clearer side
-                        twist.linear.x = self.arc_linear
-                        twist.angular.z = self.turn_direction * self.arc_angular
-                        self.pub.publish(twist)
+                    elif self.state == 'moving_forward':
+                        twist = Twist()
+                        if self.latest_scan is None:
+                            # no data yet, just stop
+                            twist.linear.x = 0.0
+                            self.pub.publish(twist)
+                            return
+                        min_front = self.get_min_in_sector(self.latest_scan, -15.0, 15.0)
+                        if min_front < 0.5:
+                            # obstacle detected: stop and decide turn
+                            twist.linear.x = 0.0
+                            self.pub.publish(twist)
+                            left_clear = self.get_min_in_sector(self.latest_scan, 30.0, 90.0)
+                            right_clear = self.get_min_in_sector(self.latest_scan, -90.0, -30.0)
+                            self.turn_direction = 1 if left_clear > right_clear else -1
+                            self.state = 'turning'
+                        else:
+                            # path clear: go forward
+                            twist.linear.x = self.forward_speed
+                            self.pub.publish(twist)
 
-            def get_min_in_sector(self, scan: LaserScan, start_deg: float, end_deg: float) -> float:
-                """Return the minimum range in the angular sector [start_deg, end_deg]."""
-                ang_min = scan.angle_min
-                inc = scan.angle_increment
-                ranges = scan.ranges
-                start_rad = math.radians(start_deg)
-                end_rad = math.radians(end_deg)
-                min_range = float('inf')
-                for i, r in enumerate(ranges):
-                    if math.isfinite(r):
-                        angle = ang_min + i * inc
-                        if start_rad <= angle <= end_rad:
-                            if r < min_range:
-                                min_range = r
-                return min_range
+                    elif self.state == 'turning':
+                        twist = Twist()
+                        if self.latest_scan is None:
+                            twist.linear.x = 0.0
+                            twist.angular.z = 0.0
+                            self.pub.publish(twist)
+                            return
+                        min_front = self.get_min_in_sector(self.latest_scan, -15.0, 15.0)
+                        if min_front > 0.5:
+                            # path cleared: stop turning, resume forward
+                            self.state = 'moving_forward'
+                            twist.linear.x = 0.0
+                            twist.angular.z = 0.0
+                            self.pub.publish(twist)
+                        else:
+                            # arc turn toward clearer side
+                            twist.linear.x = self.arc_linear
+                            twist.angular.z = self.turn_direction * self.arc_angular
+                            self.pub.publish(twist)
 
-        def main(args=None):
-            rclpy.init(args=args)
-            node = DifferentialDriveAvoider()
-            rclpy.spin(node)
-            node.destroy_node()
-            rclpy.shutdown()
+                def get_min_in_sector(self, scan: LaserScan, start_deg: float, end_deg: float) -> float:
+                    """Return the minimum range in the angular sector [start_deg, end_deg]."""
+                    ang_min = scan.angle_min
+                    inc = scan.angle_increment
+                    ranges = scan.ranges
+                    start_rad = math.radians(start_deg)
+                    end_rad = math.radians(end_deg)
+                    min_range = float('inf')
+                    for i, r in enumerate(ranges):
+                        if math.isfinite(r):
+                            angle = ang_min + i * inc
+                            if start_rad <= angle <= end_rad:
+                                if r < min_range:
+                                    min_range = r
+                    return min_range
 
-        if __name__ == '__main__':
-            main()
-        ```
+            def main(args=None):
+                rclpy.init(args=args)
+                node = DifferentialDriveAvoider()
+                rclpy.spin(node)
+                node.destroy_node()
+                rclpy.shutdown()
+
+            if __name__ == '__main__':
+                main()
+            ```
 
 
 ### 6-4. 開発環境における LLM が生成するコードの性能評価
